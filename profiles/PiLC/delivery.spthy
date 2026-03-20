@@ -1,0 +1,17 @@
+// delivery.spthy — Pi_LC: Authentic channel
+// R-: !Auth binds sender identity and routing (DY cannot forge).
+// !Auth persistent — replay possible.
+// Out(x) produced — adversary learns message contents (G6a secrecy loss).
+// No In() — delivery via !Auth directly, avoiding DY backward search.
+
+rule ChanOut_LC:
+    [ MsgOut(pid, $A, $B, x) ]
+    --[]->
+    [ !Auth($A, $B, x), Out(x) ]
+
+rule ChanIn_LC:
+    [ !Auth($A, $B, x), !Setup(pid) ]
+    --[]->
+    [ MsgIn(pid, $A, $B, x) ]
+    // pid from !Setup — receiver learns pid from existing instance
+    // !Auth persistent — replay possible

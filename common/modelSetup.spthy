@@ -1,0 +1,73 @@
+// modelSetup.spthy — Static model annotations and process instantiation
+// Derived from the procurement collaboration graph structure.
+//
+// Collaboration topology (hub-and-spoke, PA orchestrates):
+//   PA -> RA: clearance_req     (unconditional, before gateway)
+//   RA -> PA: clearance_resp    (unconditional, before gateway)
+//   PA -> SA: award_SA          (branch 1 of exclusive gateway)
+//   SA -> PA: order_SA          (branch 1, reply)
+//   PA -> SB: award_SB          (branch 2 of exclusive gateway)
+//   SB -> PA: order_SB          (branch 2, reply)
+//
+// Exclusive gateway in PA: exactly one of {award_SA, award_SB} is sent.
+// Message pairs (award_SA, order_SA) and (award_SB, order_SB) are
+// downstream of distinct branches.
+
+// Static model annotations — derived from collaboration graph, emitted once
+rule ModelSetup:
+    [ Fr(~award_SA), Fr(~award_SB),
+      Fr(~order_SA), Fr(~order_SB),
+      Fr(~clearance_req), Fr(~clearance_resp) ]
+    --[ Exclusive(~award_SA, ~award_SB),
+        Exclusive(~order_SA, ~order_SB),
+        Secret(~award_SA), Secret(~award_SB),
+        Secret(~order_SA), Secret(~order_SB),
+        Secret(~clearance_req), Secret(~clearance_resp) ]->
+    [ // Model topology: !ModelEdge(sender_pool, throw_element, receiver_pool, payload)
+      // Used by honest throw rules and VC delivery chain
+      // Pre-gateway (unconditional)
+      !ModelEdge('PA', 'throw_clearance_req', 'RA', ~clearance_req),
+      !ModelEdge('RA', 'throw_clearance_resp', 'PA', ~clearance_resp),
+      // Branch 1: Supplier A
+      !ModelEdge('PA', 'throw_award_SA', 'SA', ~award_SA),
+      !ModelEdge('SA', 'throw_order_SA', 'PA', ~order_SA),
+      // Branch 2: Supplier B
+      !ModelEdge('PA', 'throw_award_SB', 'SB', ~award_SB),
+      !ModelEdge('SB', 'throw_order_SB', 'PA', ~order_SB),
+      // Exclusive pairs (persistent — consumed by VC alternative-flow checks)
+      // Named !ExclPair to avoid clash with linear Exclusive action fact
+      !ExclPair(~award_SA, ~award_SB),
+      !ExclPair(~award_SB, ~award_SA),
+      !ExclPair(~order_SA, ~order_SB),
+      !ExclPair(~order_SB, ~order_SA),
+      // Contract state machine: !ContractEdge(current_state, next_state, sender, receiver, payload)
+      // Used by Pi_SC's Contract_Execute to validate and sequence transitions.
+      // The linear St(pid, 'Contract', current_state) enforces ordering and
+      // mutual exclusion at the gateway (only one branch can consume the token).
+      //
+      //   start ─(PA→RA)─► awaiting_clearance
+      //   awaiting_clearance ─(RA→PA)─► gateway
+      //   gateway ─(PA→SA)─► awaiting_order_SA     ← exclusive
+      //   gateway ─(PA→SB)─► awaiting_order_SB     ← exclusive
+      //   awaiting_order_SA ─(SA→PA)─► done
+      //   awaiting_order_SB ─(SB→PA)─► done
+      !ContractEdge('start', 'awaiting_clearance', 'PA', 'RA', ~clearance_req),
+      !ContractEdge('awaiting_clearance', 'gateway', 'RA', 'PA', ~clearance_resp),
+      !ContractEdge('gateway', 'awaiting_order_SA', 'PA', 'SA', ~award_SA),
+      !ContractEdge('gateway', 'awaiting_order_SB', 'PA', 'SB', ~award_SB),
+      !ContractEdge('awaiting_order_SA', 'done', 'SA', 'PA', ~order_SA),
+      !ContractEdge('awaiting_order_SB', 'done', 'SB', 'PA', ~order_SB) ]
+
+// Process instantiation: fresh pid shared across all pools
+rule Init:
+    [ Fr(~pid) ]
+    --[ Init(~pid) ]->
+    [ St(~pid, 'PA', 'start'),
+      St(~pid, 'RA', 'start'),
+      St(~pid, 'SA', 'start'),
+      St(~pid, 'SB', 'start'),
+      !Setup(~pid) ]
+    // St(pid, P_adv, start) is stranded when P_adv is adversarial:
+    // adversary R+ rules do not consume St, encoding the absence of
+    // mutual exclusion (no token semantics for the adversary).
+    // !Setup(pid) persistent — consumed by profile-specific init rules.

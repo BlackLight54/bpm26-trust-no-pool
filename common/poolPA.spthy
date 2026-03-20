@@ -1,0 +1,85 @@
+// pool_PA.spthy — Honest rules for Procurement Authority
+//
+// PA's process:
+//   start -> evaluate_request -> throw_clearance_req -> catch_clearance_resp
+//   -> gateway -> { branch_SA: throw_award_SA -> catch_order_SA
+//                 | branch_SB: throw_award_SB -> catch_order_SB }
+//   -> merge -> end
+
+// Sequence: start -> evaluate_request
+rule PA_Start:
+    [ St(pid, 'PA', 'start') ]
+    --[ Act(pid, 'PA', 'PA', 'start') ]->
+    [ St(pid, 'PA', 'evaluate_request') ]
+
+// Sequence: evaluate_request -> throw_clearance_req
+rule PA_EvaluateRequest:
+    [ St(pid, 'PA', 'evaluate_request') ]
+    --[ Act(pid, 'PA', 'PA', 'evaluate_request') ]->
+    [ St(pid, 'PA', 'throw_clearance_req') ]
+
+// Message throw: PA -> RA (clearance request)
+rule PA_Throw_ClearanceReq:
+    [ St(pid, 'PA', 'throw_clearance_req'),
+      !ModelEdge('PA', 'throw_clearance_req', 'RA', payload) ]
+    --[ Act(pid, 'PA', 'PA', 'throw_clearance_req'),
+        Sent(pid, 'PA', payload) ]->
+    [ St(pid, 'PA', 'catch_clearance_resp'),
+      MsgOut(pid, 'PA', 'RA', payload) ]
+
+// Message catch: RA -> PA (clearance response)
+rule PA_Catch_ClearanceResp:
+    [ St(pid, 'PA', 'catch_clearance_resp'),
+      MsgIn(pid, 'RA', 'PA', payload) ]
+    --[ Received(pid, 'PA', 'RA', payload) ]->
+    [ St(pid, 'PA', 'gateway') ]
+
+// Exclusive gateway: branch SA
+rule PA_Gateway_SA:
+    [ St(pid, 'PA', 'gateway') ]
+    --[ Act(pid, 'PA', 'gateway', 'branch_SA') ]->
+    [ St(pid, 'PA', 'throw_award_SA') ]
+
+// Exclusive gateway: branch SB
+rule PA_Gateway_SB:
+    [ St(pid, 'PA', 'gateway') ]
+    --[ Act(pid, 'PA', 'gateway', 'branch_SB') ]->
+    [ St(pid, 'PA', 'throw_award_SB') ]
+
+// Message throw: PA -> SA (award)
+rule PA_Throw_AwardSA:
+    [ St(pid, 'PA', 'throw_award_SA'),
+      !ModelEdge('PA', 'throw_award_SA', 'SA', payload) ]
+    --[ Act(pid, 'PA', 'PA', 'throw_award_SA'),
+        Sent(pid, 'PA', payload) ]->
+    [ St(pid, 'PA', 'catch_order_SA'),
+      MsgOut(pid, 'PA', 'SA', payload) ]
+
+// Message catch: SA -> PA (order confirmation)
+rule PA_Catch_OrderSA:
+    [ St(pid, 'PA', 'catch_order_SA'),
+      MsgIn(pid, 'SA', 'PA', payload) ]
+    --[ Received(pid, 'PA', 'SA', payload) ]->
+    [ St(pid, 'PA', 'merge') ]
+
+// Message throw: PA -> SB (award)
+rule PA_Throw_AwardSB:
+    [ St(pid, 'PA', 'throw_award_SB'),
+      !ModelEdge('PA', 'throw_award_SB', 'SB', payload) ]
+    --[ Act(pid, 'PA', 'PA', 'throw_award_SB'),
+        Sent(pid, 'PA', payload) ]->
+    [ St(pid, 'PA', 'catch_order_SB'),
+      MsgOut(pid, 'PA', 'SB', payload) ]
+
+// Message catch: SB -> PA (order confirmation)
+rule PA_Catch_OrderSB:
+    [ St(pid, 'PA', 'catch_order_SB'),
+      MsgIn(pid, 'SB', 'PA', payload) ]
+    --[ Received(pid, 'PA', 'SB', payload) ]->
+    [ St(pid, 'PA', 'merge') ]
+
+// Merge -> end
+rule PA_End:
+    [ St(pid, 'PA', 'merge') ]
+    --[ Act(pid, 'PA', 'PA', 'end') ]->
+    [ ]

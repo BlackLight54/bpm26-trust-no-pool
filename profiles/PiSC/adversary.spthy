@@ -1,0 +1,12 @@
+// adversary.spthy — R+ rules for Pi_SC (Smart Contract)
+// Adversary submits a valid transition to the contract.
+// !ContractEdge provides the payload — the contract is public.
+// No St consumed — contract validates independently via Contract_Execute.
+// pid free — contract binds instance at validation.
+
+rule Adv_Submit:
+    [ !Adv($A),
+      !ContractEdge(current, next, $A, $B, m),
+      !Setup(pid) ]
+    --[ Act(pid, $A, current, next), Sent(pid, $A, m) ]->
+    [ MsgOut(pid, $A, $B, m) ]

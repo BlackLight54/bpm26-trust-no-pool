@@ -1,0 +1,25 @@
+// pool_RA.spthy — Honest rules for Regulatory Authority
+//
+// RA's process:
+//   message_start (from PA) -> issue_clearance -> message_end (reply to PA)
+
+// Message start: PA -> RA (clearance request triggers RA)
+rule RA_Catch_ClearanceReq:
+    [ St(pid, 'RA', 'start'),
+      MsgIn(pid, 'PA', 'RA', payload) ]
+    --[ Received(pid, 'RA', 'PA', payload) ]->
+    [ St(pid, 'RA', 'issue_clearance') ]
+
+// Activity: issue clearance
+rule RA_IssueClearance:
+    [ St(pid, 'RA', 'issue_clearance') ]
+    --[ Act(pid, 'RA', 'RA', 'issue_clearance') ]->
+    [ St(pid, 'RA', 'throw_clearance_resp') ]
+
+// Message end: RA -> PA (clearance response)
+rule RA_Throw_ClearanceResp:
+    [ St(pid, 'RA', 'throw_clearance_resp'),
+      !ModelEdge('RA', 'throw_clearance_resp', 'PA', payload) ]
+    --[ Act(pid, 'RA', 'RA', 'throw_clearance_resp'),
+        Sent(pid, 'RA', payload) ]->
+    [ MsgOut(pid, 'RA', 'PA', payload) ]

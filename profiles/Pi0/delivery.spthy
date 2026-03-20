@@ -1,0 +1,13 @@
+// delivery.spthy — Pi0: Secure channel (no DY interference)
+// R-: Messages delivered directly, no adversary involvement.
+// No Out() — adversary never learns contents. Linear — no replay.
+
+rule ChanOut_Honest:
+    [ MsgOut(pid, $A, $B, x) ]
+    --[]->
+    [ Sec(pid, $A, $B, x) ]
+
+rule ChanIn_Honest:
+    [ Sec(pid, $A, $B, x) ]
+    --[]->
+    [ MsgIn(pid, $A, $B, x) ]

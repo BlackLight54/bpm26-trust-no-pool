@@ -1,0 +1,190 @@
+/*
+ * lemmas.spthy — Single entry point for the BPMN collaboration security analysis
+ *
+ * Running example: Procurement collaboration (4 pools, hub-and-spoke)
+ *   PA  — Procurement Authority (orchestrator, exclusive gateway)
+ *   RA  — Regulatory Authority (clearance)
+ *   SA  — Supplier A
+ *   SB  — Supplier B
+ *
+ * Usage:
+ *   tamarin-prover lemmas.spthy -D=PROFILE_LC -D=ADV_PA
+ *   tamarin-prover lemmas.spthy -D=PROFILE_SC -D=ADV_PA
+ *   tamarin-prover lemmas.spthy -D=PROFILE_VC -D=ADV_PA -D=ATOMIC_VDR
+ *   tamarin-prover lemmas.spthy -D=PROFILE_VC -D=ADV_PA
+ *   tamarin-prover lemmas.spthy -D=PROFILE_DY -D=ADV_PA
+ *   tamarin-prover lemmas.spthy                             (Pi0: all honest)
+ *
+ * Preprocessor flags:
+ *   PROFILE_LC   — Loose coupling (authenticated channels)
+ *   PROFILE_SC   — Smart contract orchestration
+ *   PROFILE_VC   — VC-based self-orchestration
+ *   PROFILE_DY   — Full Dolev-Yao network adversary
+ *   (none)       — Pi0: honest baseline, secure channel
+ *
+ *   ADV_PA       — Procurement Authority is adversarial
+ *   ADV_RA       — Regulatory Authority is adversarial
+ *   ADV_SA       — Supplier A is adversarial
+ *   ADV_SB       — Supplier B is adversarial
+ *
+ *   ATOMIC_VDR   — (PROFILE_VC only) Use atomic VDR non-revocation semantics
+ */
+
+theory BPMNCollaborationSecurity
+begin
+
+builtins: signing
+
+// ===========================================================================
+// Model setup: static annotations, process instantiation
+// ===========================================================================
+
+#include "common/modelSetup.spthy"
+
+// ===========================================================================
+// Adversary designation: mark adversarial pools, include honest pool rules
+// Colluding adversaries act as a single adversary — !Adv($A) matches any
+// marked pool. R+ rules are included once with the profile, not per pool.
+// ===========================================================================
+
+// --- Pool PA (Procurement Authority) ---
+#ifdef ADV_PA
+rule Adv_Mark_PA:
+    [] --[]-> [ !Adv('PA') ]
+#else
+#include "common/poolPA.spthy"
+#endif
+
+// --- Pool RA (Regulatory Authority) ---
+#ifdef ADV_RA
+rule Adv_Mark_RA:
+    [] --[]-> [ !Adv('RA') ]
+#else
+#include "common/poolRA.spthy"
+#endif
+
+// --- Pool SA (Supplier A) ---
+#ifdef ADV_SA
+rule Adv_Mark_SA:
+    [] --[]-> [ !Adv('SA') ]
+#else
+#include "common/poolSA.spthy"
+#endif
+
+// --- Pool SB (Supplier B) ---
+#ifdef ADV_SB
+rule Adv_Mark_SB:
+    [] --[]-> [ !Adv('SB') ]
+#else
+#include "common/poolSB.spthy"
+#endif
+
+// ===========================================================================
+// Profile: delivery rules (R-) and adversary action rules (R+)
+// R+ included once per profile — fires for any pool with !Adv fact.
+// ===========================================================================
+
+// Profiles are mutually exclusive. Each block defines HAS_PROFILE as a marker.
+// If no profile flag is set, Pi0 (secure channel baseline) is included.
+
+#ifdef PROFILE_LC
+#define HAS_PROFILE
+  #include "profiles/PiLC/adversary.spthy"
+  #include "profiles/PiLC/delivery.spthy"
+#endif
+
+#ifdef PROFILE_SC
+#define HAS_PROFILE
+  #include "profiles/PiSC/adversary.spthy"
+  #include "profiles/PiSC/delivery.spthy"
+#endif
+
+#ifdef PROFILE_VC
+#define HAS_PROFILE
+  #include "profiles/PiVC/adversary.spthy"
+  #include "profiles/PiVC/delivery.spthy"
+#endif
+
+#ifdef PROFILE_DY
+#define HAS_PROFILE
+  // R+ combines custom adversary rules (leak payloads) with built-in DY
+  #include "profiles/PiDY/adversary.spthy"
+  #include "profiles/PiDY/delivery.spthy"
+#endif
+
+// Pi0: secure channel baseline (fallback when no profile flag is set)
+#ifdef HAS_PROFILE
+#else
+  #include "profiles/Pi0/delivery.spthy"
+#endif
+
+// ===========================================================================
+// Helper lemmas (reusable, assist automated proof search)
+// ===========================================================================
+
+// PA's exclusive gateway consumes linear St(pid,'PA','gateway').
+// Only one branch fires per instance — foundation for G1.
+lemma gateway_exclusive [reuse]:
+  "not(Ex pid #i #j.
+    Act(pid, 'PA', 'gateway', 'branch_SA') @ #i
+    & Act(pid, 'PA', 'gateway', 'branch_SB') @ #j)"
+
+// ===========================================================================
+// Security property lemmas (G1-G7)
+// ===========================================================================
+
+// G1: No bifurcation (receiver-side).
+// Exclusive(m1, m2) emitted at init for message pairs downstream of distinct
+// branches of the same exclusive gateway. Bifurcation = both received in same pid.
+// Conclusion m1 = m2 contradicts Exclusive (only emitted for distinct messages),
+// so lemma holds iff the antecedent is unreachable.
+lemma no_bifurcation:
+  "All pid pk pl pi1 pi2 m1 m2 #i #j #e.
+    Received(pid, pk, pi1, m1) @ #i
+    & Received(pid, pl, pi2, m2) @ #j
+    & Exclusive(m1, m2) @ #e
+    ==> m1 = m2"
+
+// G2: Non-repudiation (sender attribution backed by delivery mechanism).
+// If receiver believes pi sent m, then pi actually produced a Sent event.
+// Uses pid_s (any instance) to separate identity from instance binding (G7).
+lemma non_repudiation:
+  "All pid pj pi m #i.
+    Received(pid, pj, pi, m) @ #i
+    ==> (Ex pid_s #j. Sent(pid_s, pi, m) @ #j)"
+
+// G3: Faithful history (execution evidence precedes or accompanies send).
+// Checks ACTUAL sender pi (from Sent), not attributed sender pi_r (from Received).
+// Under Pi0/PiSC: Act + Sent co-emitted (#k = #j).
+// Under PiLC/PiVC/PiDY: no Act — lemma fails (correct).
+lemma faithful_history:
+  "All pid_s pi pj pid_r pi_r m #i #j.
+    Sent(pid_s, pi, m) @ #j & Received(pid_r, pj, pi_r, m) @ #i
+    ==> (Ex parent e #k. Act(pid_s, pi, parent, e) @ #k & not(#j < #k))"
+
+// G4: Authorized progression (sender existence, any instance).
+// Checks only that SOME Sent event exists — not same instance (G7)
+// or model compliance (G3).
+lemma authorized_progression:
+  "All pid pj pi_r m #i.
+    Received(pid, pj, pi_r, m) @ #i
+    ==> (Ex pi pid_s #j. Sent(pid_s, pi, m) @ #j & #j < #i)"
+
+// G7: Instance isolation (delivery preserves pid).
+// Every received message has a corresponding Sent in the SAME instance.
+// Holds when the delivery mechanism (R-) propagates pid end-to-end
+// (Pi0, PiSC, PiVC). Fails when pid is free in delivery (PiLC, PiDY).
+// Quantifies per-Received rather than over all Sent-Received pairs,
+// so shared message payloads across instances do not cause false violations.
+lemma instance_isolation:
+  "All pid pj pi_r m #i.
+    Received(pid, pj, pi_r, m) @ #i
+    ==> (Ex pi #j. Sent(pid, pi, m) @ #j)"
+
+// G6a: Value secrecy — adversary does not learn secret values.
+// Secret(x) emitted at init for fresh values on message flows
+// not addressed to P_adv.
+lemma value_secrecy:
+  "All x #i. Secret(x) @ #i ==> not(Ex #j. K(x) @ #j)"
+
+end

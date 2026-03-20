@@ -1,0 +1,18 @@
+// delivery.spthy — Pi_DY: Trivial pass-through + built-in DY
+// R+: Tamarin's built-in DY adversary (intercept, inject, replay, modify, forge)
+// R-: No meaningful platform constraints
+
+// Honest MsgOut enters the DY network
+rule MsgOut_Enter_DY:
+    [ MsgOut(pid, $A, $B, x) ]
+    --[]->
+    [ Out(<$A, $B, x>) ]
+
+// Trivial delivery — no checks, no authentication, no instance binding
+rule Deliver_DY:
+    [ In(<sender, receiver, x>), !Setup(pid) ]
+    --[]->
+    [ MsgIn(pid, sender, receiver, x) ]
+    // pid from !Setup — receiver learns pid from existing instance
+    // sender, receiver from In() — adversary-controlled (no authentication)
+    // No Sent — DY-forged messages have no Sent, breaking G2/G4.

@@ -1,0 +1,33 @@
+// delivery.spthy — Pi_SC: Contract-mediated delivery
+// R-: Contract validates every state transition against the BPMN model.
+// Linear St('Contract', ...) IS the atomicity mechanism.
+// !ContractEdge encodes the same collaboration model as a sequential state machine.
+
+// Contract initialization: set contract to start state
+rule Contract_Init:
+    [ !Setup(pid) ]
+    --[]->
+    [ St(pid, 'Contract', 'start') ]
+
+// Contract validates transition against BPMN model
+// !ContractEdge(current, next, sender, receiver, payload) — same model, state machine encoding
+// Linear St consumed once per state — enforces ordering and mutual exclusion at gateway
+rule Contract_Execute:
+    [ MsgOut(pid, $A, $B, x),
+      St(pid, 'Contract', current),
+      !ContractEdge(current, next, $A, $B, x) ]
+    --[]->
+    [ St(pid, 'Contract', next),
+      ContractMsg(pid, $A, $B, x) ]
+
+// Clean delivery — no BPMN knowledge, state is public (blockchain)
+rule Contract_Deliver:
+    [ ContractMsg(pid, sender, receiver, x) ]
+    --[]->
+    [ Out(x),
+      Sec_SC(pid, sender, receiver, x) ]
+
+rule ChanIn_SC:
+    [ Sec_SC(pid, $A, $B, x) ]
+    --[]->
+    [ MsgIn(pid, $A, $B, x) ]

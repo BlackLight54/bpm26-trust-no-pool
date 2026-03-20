@@ -1,0 +1,12 @@
+// adversary.spthy — R+ rules for Pi_LC (Loose Coupling)
+// Adversary sends model-valid messages under own identity.
+// No St consumed — no mutual exclusion, no execution ordering.
+// Fr(~pid) — adversary generates own instance id (not bound to any honest instance).
+// !ModelEdge persistent — fires for each flow from $A, enabling bifurcation.
+
+rule Adv_Send:
+    [ !Adv($A),
+      !ModelEdge($A, e, $B, m),
+      Fr(~pid) ]
+    --[ Sent(~pid, $A, m) ]->
+    [ MsgOut(~pid, $A, $B, m) ]

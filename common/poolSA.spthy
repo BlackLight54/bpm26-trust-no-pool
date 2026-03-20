@@ -1,0 +1,25 @@
+// pool_SA.spthy — Honest rules for Supplier A
+//
+// SA's process:
+//   message_start (from PA) -> prepare_order -> message_end (reply to PA)
+
+// Message start: PA -> SA (award triggers SA)
+rule SA_Catch_Award:
+    [ St(pid, 'SA', 'start'),
+      MsgIn(pid, 'PA', 'SA', payload) ]
+    --[ Received(pid, 'SA', 'PA', payload) ]->
+    [ St(pid, 'SA', 'prepare_order') ]
+
+// Activity: prepare order
+rule SA_PrepareOrder:
+    [ St(pid, 'SA', 'prepare_order') ]
+    --[ Act(pid, 'SA', 'SA', 'prepare_order') ]->
+    [ St(pid, 'SA', 'throw_order_SA') ]
+
+// Message end: SA -> PA (order confirmation)
+rule SA_Throw_Order:
+    [ St(pid, 'SA', 'throw_order_SA'),
+      !ModelEdge('SA', 'throw_order_SA', 'PA', payload) ]
+    --[ Act(pid, 'SA', 'SA', 'throw_order_SA'),
+        Sent(pid, 'SA', payload) ]->
+    [ MsgOut(pid, 'SA', 'PA', payload) ]

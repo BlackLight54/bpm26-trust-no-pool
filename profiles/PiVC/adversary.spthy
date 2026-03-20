@@ -1,0 +1,13 @@
+// adversary.spthy — R+ rules for Pi_VC (VC-based self-orchestration)
+// Adversary constructs TdVP bundling message and NiTC.
+// No St consumed — can run concurrent declarations to distinct recipients.
+
+rule Adv_Declare:
+    [ !Adv($A),
+      !VphC(pid, $A, history),
+      !NiTC(pid, nitc_cur, $B, m),
+      !ModelEdge(parent, e, $B, m) ]
+    --[ Sent(pid, $A, m) ]->
+    [ VC_TdVP(pid, $A, $B, m, nitc_cur) ]
+    // Can fire multiple times — concurrent declarations to different recipients
+    // Produces VC_TdVP directly (adversary constructs own TdVP, bypasses VC_Wrap)

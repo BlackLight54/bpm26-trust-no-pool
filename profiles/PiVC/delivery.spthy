@@ -1,0 +1,149 @@
+// delivery.spthy — Pi_VC: Credential-mediated delivery
+// Bootstrap, verification chain, commitment, and non-revocation restrictions.
+//
+// -D=ATOMIC_VDR  -> nonrevocation_atomic (check is absolute)
+// (default)      -> nonrevocation_nonatomic (check only sees prior revocations)
+
+// ===== Bootstrap (R-) =====
+
+// NiTC issuance: recipient issues one NiTC per message flow to sender
+// Action fact NiTCIssued + restriction ensures exactly one NiTC per (pid, flow).
+// Without this, persistent !Setup + !ModelEdge allow re-firing, creating
+// duplicate NiTC_Unrevoked facts that break the revocation mechanism.
+rule VC_Bootstrap_NiTC:
+    [ !Setup(pid),
+      !ModelEdge(parent, e, $B, x),
+      Fr(~nitc_id) ]
+    --[ NiTCIssued(pid, $B, x) ]->
+    [ !NiTC(pid, ~nitc_id, $B, x),
+      NiTC_Unrevoked(pid, ~nitc_id) ]
+
+// Initial VphC: all participants receive empty history credential
+rule VC_Bootstrap_VphC:
+    [ !Setup(pid) ]
+    --[]->
+    [ !VphC(pid, $P, 'init') ]
+
+// ===== Verification and delivery chain (R-) =====
+
+// Stage 0: Wrap honest MsgOut with NiTC into TdVP (Transmission Declaration VP)
+// Output is VC_TdVP (not MsgOut) to prevent VC_Wrap feeding back into itself.
+rule VC_Wrap:
+    [ MsgOut(pid, $A, $B, x),
+      !NiTC(pid, nitc_cur, $B, x) ]
+    --[]->
+    [ VC_TdVP(pid, $A, $B, x, nitc_cur) ]
+
+// Stage 1: Verify current NiTC non-revocation
+// NiTC_Unrevoked is NOT consumed here — checking is non-destructive.
+// Non-revocation enforced via CheckNonRevoked action fact + restriction.
+// NiTC_Unrevoked is linear and consumed only at VC_Commit (= revocation).
+rule VC_Verify:
+    [ VC_TdVP(pid, $A, $B, x, nitc_cur),
+      !NiTC(pid, nitc_cur, $B, x),
+      !ModelEdge(parent, e, $B, x) ]
+    --[ CheckNonRevoked(nitc_cur), VerifyStarted(pid, x) ]->
+    [ VC_PreVerified(pid, $A, $B, x, nitc_cur) ]
+
+// Stage 2: Promotion — single rule consumes VC_PreVerified exactly once.
+// Alternative-flow checks are encoded via AltChecked action + restriction,
+// not as separate rules consuming VC_PreVerified (which caused infinite
+// backward-search nesting from multiple consumers of the same linear fact).
+//
+// For messages with alternatives: restriction all_alternatives_checked
+// forces AltChecked to have occurred. A separate VC_CheckAlt_Only rule
+// (below) emits AltChecked without consuming VC_PreVerified.
+rule VC_Promote:
+    [ VC_PreVerified(pid, $A, $B, x, nitc_cur) ]
+    --[ ReadyToCommit(pid, x) ]->
+    [ VC_Verified(pid, $A, $B, x, nitc_cur) ]
+
+// Alternative-flow NiTC check — emits AltChecked + CheckNonRevoked
+// to satisfy the all_alternatives_checked restriction.
+// Does NOT consume VC_PreVerified; uses only persistent facts as premises.
+rule VC_CheckAlt_Only:
+    [ !NiTC(pid, nitc_cur, $B, x),
+      !ExclPair(x, x_alt),
+      !NiTC(pid, nitc_alt, $C, x_alt) ]
+    --[ CheckNonRevoked(nitc_alt), AltChecked(pid, x, x_alt) ]->
+    []
+
+// Stage 3: Commitment — consumes linear NiTC_Unrevoked = revocation
+// This is the only rule that touches NiTC_Unrevoked after bootstrap.
+// Linear consumption ensures at-most-once revocation structurally.
+rule VC_Commit:
+    [ VC_Verified(pid, $A, $B, x, nitc_cur),
+      NiTC_Unrevoked(pid, nitc_cur) ]
+    --[ Revoked(nitc_cur) ]->
+    [ VC_Committed(pid, $A, $B, x) ]
+
+// Stage 4: Delivery — message acceptance
+rule VC_Deliver:
+    [ VC_Committed(pid, sender, receiver, x) ]
+    --[]->
+    [ Sec_VC(pid, sender, receiver, x) ]
+    // No Out() — selective disclosure preserves confidentiality
+
+rule ChanIn_VC:
+    [ Sec_VC(pid, $A, $B, x) ]
+    --[]->
+    [ MsgIn(pid, $A, $B, x) ]
+
+// ===== Non-revocation restrictions =====
+
+#ifdef ATOMIC_VDR
+// ATOMIC VDR: check is absolute — any revocation at any time blocks the check
+restriction nonrevocation_atomic:
+    "All nitc_id #i.
+      CheckNonRevoked(nitc_id) @ #i
+      ==> not(Ex #k. Revoked(nitc_id) @ #k)"
+#else
+// NON-ATOMIC VDR: check only sees prior revocations (TOCTOU possible)
+restriction nonrevocation_nonatomic:
+    "All nitc_id #i.
+      CheckNonRevoked(nitc_id) @ #i
+      ==> not(Ex #k. Revoked(nitc_id) @ #k & #k < #i)"
+#endif
+
+// ===== Alternative-flow enforcement =====
+
+// All exclusive alternatives must be checked before commitment
+restriction all_alternatives_checked:
+    "All pid x #i.
+      ReadyToCommit(pid, x) @ #i
+      ==> (All x_alt #setup.
+            Exclusive(x, x_alt) @ #setup
+            ==> (Ex #j. AltChecked(pid, x, x_alt) @ #j & #j < #i))"
+
+// ===== Bootstrap uniqueness =====
+
+// Exactly one NiTC per (pid, recipient, payload) — prevents duplicate
+// NiTC_Unrevoked facts that would bypass the revocation mechanism.
+restriction unique_nitc_per_flow:
+    "All pid B x #i #j.
+      NiTCIssued(pid, B, x) @ #i & NiTCIssued(pid, B, x) @ #j
+      ==> #i = #j"
+
+// Each alt-check fires at most once per (pid, x, x_alt).
+// VC_CheckAlt_Only has all-persistent premises and can fire unboundedly;
+// this restriction cuts the infinite backward-search nesting.
+restriction unique_alt_check:
+    "All pid x x_alt #i #j.
+      AltChecked(pid, x, x_alt) @ #i & AltChecked(pid, x, x_alt) @ #j
+      ==> #i = #j"
+
+// Alt-checks must occur after verification has started for that flow.
+// Restores causal coupling: VC_CheckAlt_Only uses only persistent premises
+// and could otherwise fire before any message enters the delivery chain.
+restriction alt_check_after_verify:
+    "All pid x x_alt #j.
+      AltChecked(pid, x, x_alt) @ #j
+      ==> (Ex #i. VerifyStarted(pid, x) @ #i & #i < #j)"
+
+// Verify fires at most once per (pid, payload).
+// Prevents unbounded VC_Verify firing from persistent !NiTC + !ModelEdge.
+restriction unique_verify:
+    "All pid x #i #j.
+      VerifyStarted(pid, x) @ #i & VerifyStarted(pid, x) @ #j
+      ==> #i = #j"
+

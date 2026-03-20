@@ -1,0 +1,13 @@
+// adversary.spthy — R+ rules for Pi_DY (Dolev-Yao network)
+// Adversary leaks model-valid payloads onto the DY network.
+// Built-in DY then handles intercept, forge, replay, inject.
+// No Act — DY provides no execution evidence.
+
+rule Adv_Send_DY:
+    [ !Adv($A),
+      !ModelEdge($A, e, $B, m),
+      Fr(~pid) ]
+    --[ Sent(~pid, $A, m) ]->
+    [ Out(m) ]
+    // Fr(~pid) — adversary generates own instance id
+    // Payload goes directly to Out (no MsgOut — DY has no channel structure)
