@@ -1,8 +1,8 @@
 // delivery.spthy — Pi_VC: Credential-mediated delivery
 // Bootstrap, verification chain, commitment, and non-revocation restrictions.
 //
-// -D=ATOMIC_VDR  -> nonrevocation_atomic (check is absolute)
-// (default)      -> nonrevocation_nonatomic (check only sees prior revocations)
+// -D=ATOMIC_VDR  -> nonrevocation_alt_atomic (alternative check is absolute)
+// (default)      -> nonrevocation_alt_nonatomic (alternative check only sees prior revocations)
 
 // ===== Bootstrap (R-) =====
 
@@ -34,10 +34,11 @@ rule VC_Wrap:
     --[]->
     [ VC_TdVP(pid, $A, $B, x, nitc_cur) ]
 
-// Stage 1: Verify current NiTC non-revocation
-// NiTC_Unrevoked is NOT consumed here — checking is non-destructive.
-// Non-revocation enforced via CheckNonRevoked action fact + restriction.
-// NiTC_Unrevoked is linear and consumed only at VC_Commit (= revocation).
+// Stage 1: Verify current NiTC non-revocation (replay prevention)
+// Checks that this flow hasn't already been used in a prior run.
+// Uses CheckNonRevoked — always governed by nonatomic semantics,
+// because the protocol's own commitment (VC_Commit) will revoke this
+// NiTC after the check. Only prior revocations indicate replay.
 rule VC_Verify:
     [ VC_TdVP(pid, $A, $B, x, nitc_cur),
       !NiTC(pid, nitc_cur, $B, x),
@@ -58,14 +59,17 @@ rule VC_Promote:
     --[ ReadyToCommit(pid, x) ]->
     [ VC_Verified(pid, $A, $B, x, nitc_cur) ]
 
-// Alternative-flow NiTC check — emits AltChecked + CheckNonRevoked
+// Alternative-flow NiTC check — emits AltChecked + CheckNonRevokedAlt
 // to satisfy the all_alternatives_checked restriction.
+// Uses CheckNonRevokedAlt (distinct from CheckNonRevoked) because the
+// atomic/nonatomic VDR semantics apply here: this is the bifurcation
+// detection check where TOCTOU can occur.
 // Does NOT consume VC_PreVerified; uses only persistent facts as premises.
 rule VC_CheckAlt_Only:
     [ !NiTC(pid, nitc_cur, $B, x),
       !ExclPair(x, x_alt),
       !NiTC(pid, nitc_alt, $C, x_alt) ]
-    --[ CheckNonRevoked(nitc_alt), AltChecked(pid, x, x_alt) ]->
+    --[ CheckNonRevokedAlt(nitc_alt), AltChecked(pid, x, x_alt) ]->
     []
 
 // Stage 3: Commitment — consumes linear NiTC_Unrevoked = revocation
@@ -91,17 +95,26 @@ rule ChanIn_VC:
 
 // ===== Non-revocation restrictions =====
 
-#ifdef ATOMIC_VDR
-// ATOMIC VDR: check is absolute — any revocation at any time blocks the check
-restriction nonrevocation_atomic:
+// Current NiTC: replay prevention — always nonatomic semantics.
+// The protocol's own VC_Commit will revoke this NiTC after the check;
+// only prior revocations (from a previous protocol run) indicate replay.
+restriction nonrevocation_current:
     "All nitc_id #i.
       CheckNonRevoked(nitc_id) @ #i
+      ==> not(Ex #k. Revoked(nitc_id) @ #k & #k < #i)"
+
+// Alternative NiTCs: bifurcation detection — atomic/nonatomic toggle.
+#ifdef ATOMIC_VDR
+// ATOMIC VDR: check is absolute — any revocation at any time blocks the check
+restriction nonrevocation_alt_atomic:
+    "All nitc_id #i.
+      CheckNonRevokedAlt(nitc_id) @ #i
       ==> not(Ex #k. Revoked(nitc_id) @ #k)"
 #else
 // NON-ATOMIC VDR: check only sees prior revocations (TOCTOU possible)
-restriction nonrevocation_nonatomic:
+restriction nonrevocation_alt_nonatomic:
     "All nitc_id #i.
-      CheckNonRevoked(nitc_id) @ #i
+      CheckNonRevokedAlt(nitc_id) @ #i
       ==> not(Ex #k. Revoked(nitc_id) @ #k & #k < #i)"
 #endif
 
@@ -146,4 +159,3 @@ restriction unique_verify:
     "All pid x #i #j.
       VerifyStarted(pid, x) @ #i & VerifyStarted(pid, x) @ #j
       ==> #i = #j"
-
