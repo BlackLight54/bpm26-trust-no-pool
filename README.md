@@ -88,10 +88,6 @@ Available preprocessor flags:
 | `ADV_SB` | Supplier B is adversarial |
 | `ATOMIC_VDR` | Atomic VDR semantics (only with `PROFILE_VC`) |
 
-## Pre-computed Results
-
-The `results/` directory contains verification logs from our runs. These are provided for convenience so reviewers can inspect the Tamarin output without re-running the proofs. Re-running `run_all.sh` will overwrite these logs.
-
 ## Estimated Runtime
 
-Total verification time depends on hardware. On a machine with 8 cores and 16 GB RAM, the full suite completes in approximately 5-10 minutes. Individual configurations typically terminate within 30 seconds.
+Total verification time depends on hardware. On a machine with 8 cores and 16 GB RAM, the full suite completes under 2 minutes. Individual configurations typically terminate within 30 seconds.
