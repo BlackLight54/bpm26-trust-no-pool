@@ -90,4 +90,4 @@ Available preprocessor flags:
 
 ## Estimated Runtime
 
-Total verification time depends on hardware. On a machine with 8 cores and 16 GB RAM, the full suite completes under 2 minutes. Individual configurations typically terminate within 30 seconds.
+Total verification time depends on hardware. On a machine with 12 cores x86 and 96 GB RAM, the full suite completes under 2 minutes. Individual configurations typically terminate within 30 seconds.
