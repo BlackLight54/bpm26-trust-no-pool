@@ -1,5 +1,6 @@
 # Supplementary Artifact: Tamarin Prover Models
 
+[![DOI](https://zenodo.org/badge/1187315711.svg)](https://doi.org/10.5281/zenodo.20273971)
 This repository contains the Tamarin prover theories and automation scripts for the formal verification results reported in the paper. All 20 configurations (4 platform enforcement profiles x 4 adversary designations, plus the honest baseline) can be reproduced from this artifact.
 
 ## Repository Structure
