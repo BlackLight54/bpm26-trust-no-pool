@@ -1,0 +1,37 @@
+{
+  "upload_type": "software",
+  "title": "Tamarin Theories Accompanying \"Trust No Pool: Formal Security Analysis of BPMN Collaborations\" (BPM 2026)",
+  "description": "<p>This artifact accompanies the paper \"Trust No Pool: Formal Security Analysis of BPMN Collaborations\" by Martin Farkas and Imre Kocsis, accepted at the 24th International Conference on Business Process Management (BPM 2026), Track I (Foundations).</p><p>It contains the Tamarin prover theories and automation scripts used to formally verify (or refute) security properties of a four-pool BPMN procurement collaboration under multiple platform enforcement profiles.</p><p><strong>Scope.</strong> 20 verification configurations: four platform enforcement profiles — loose coupling (Pi_LC), smart-contract orchestration (Pi_SC), Verifiable Credential–based self-orchestration (Pi_VC), and the full Dolev-Yao network adversary (Pi_DY) — crossed with four adversarial pool designations (Procurement Authority, Regulatory Authority, Supplier A, Supplier B), plus the honest secure-channel baseline (Pi_0). The Pi_VC profile is parameterised by atomic vs. non-atomic Verifiable Data Registry semantics, isolating a time-of-check-to-time-of-use behaviour.</p><p><strong>Lemmas.</strong> Six security lemmas: no bifurcation (G1), non-repudiation (G2), faithful history (G3), authorized progression (G4), instance isolation (G7), value secrecy (G6a).</p><p><strong>Requirements.</strong> Tamarin prover 1.8.0 or later, Bash 4+, Linux/macOS/WSL. On a 12-core x86 machine with 96 GB RAM the full suite completes in under two minutes.</p><p>The methodology builds on prior work by the same authors on Verifiable Credential–based self-orchestration of business collaborations (BPM 2025).</p>",
+  "creators": [
+    {
+      "name": "Farkas, Martin",
+      "affiliation": "Critical Systems Research Group, Department of Measurement and Information Systems, Budapest University of Technology and Economics",
+      "orcid": "0000-0003-4260-717X"
+    },
+    {
+      "name": "Kocsis, Imre",
+      "affiliation": "Critical Systems Research Group, Department of Measurement and Information Systems, Budapest University of Technology and Economics",
+      "orcid": "0000-0002-2792-3572"
+    }
+  ],
+  "keywords": [
+    "BPMN",
+    "business process collaboration",
+    "security protocol verification",
+    "Tamarin prover",
+    "multiset rewriting",
+    "formal verification",
+    "threat model",
+    "platform enforcement profiles",
+    "verifiable credentials",
+    "smart contracts",
+    "Dolev-Yao adversary",
+    "time-of-check-to-time-of-use",
+    "epistemic logic",
+    "self-sovereign identity"
+  ],
+  "license": "MIT",
+  "language": "eng",
+  "related_identifiers": [],
+  "access_right": "open"
+}
